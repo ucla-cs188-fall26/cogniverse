@@ -1,24 +1,54 @@
 import OpenAI from 'openai';
-import type { Category, LLMResult, Relationship } from '../types';
-import { slugify } from '../lib/slug';
-export class LLMParseError extends Error {constructor(){super('The model returned an unreadable response. Retry.');this.name='LLMParseError';}}
+import type {ExistingTopic,LLMResult} from '../types';
+import {extractionPrompt,graphResponseFormat,LLMParseError,parseAndSanitize} from './extraction';
+export {LLMParseError,parseAndSanitize} from './extraction';
 export const missingKeyMessage='No API key found. Add VITE_OPENAI_API_KEY to .env.local and restart the dev server.';
 export const hasApiKey=Boolean(import.meta.env.VITE_OPENAI_API_KEY?.trim());
-const record=(v:unknown):Record<string,unknown>=>v!==null&&typeof v==='object'?v as Record<string,unknown>:{};
-export function parseAndSanitize(raw:string,existingNodes:{id:string;label?:string}[]=[]):LLMResult {
- let parsed:unknown;try{parsed=JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''));}catch{throw new LLMParseError();}
- const obj=record(parsed);if(typeof obj.chatResponse!=='string'||!obj.chatResponse.trim())throw new LLMParseError();
- const nodes:LLMResult['nodes']=[],edges:LLMResult['edges']=[];const seen=new Set<string>();
- for(const value of Array.isArray(obj.nodes)?obj.nodes:[]){const n=record(value);if(typeof n.label!=='string'||!n.label.trim()){console.warn('Dropped node without label');continue;}const id=slugify(typeof n.id==='string'&&n.id.trim()?n.id:n.label);if(!id||seen.has(id)){console.warn('Dropped empty or duplicate node',id);continue;}seen.add(id);let category=(['Method','Tool','Theory'] as Category[]).find(c=>c.toLowerCase()===String(n.category).toLowerCase());if(!category){category='Theory';console.warn('Invalid category; using Theory');}nodes.push({id,label:n.label.trim(),category,summary:typeof n.summary==='string'?n.summary.slice(0,400):'',quote:typeof n.quote==='string'?n.quote.slice(0,300):''});}
- const allowed=new Set([...seen,...existingNodes.map(n=>n.id)]),edgeIds=new Set<string>();
- for(const value of Array.isArray(obj.edges)?obj.edges:[]){const e=record(value);const source=slugify(typeof e.source==='string'?e.source:''),target=slugify(typeof e.target==='string'?e.target:'');if(!source||!target||source===target||!allowed.has(source)||!allowed.has(target)){console.warn('Dropped invalid edge');continue;}const relationship:Relationship=['uses','supports','relates_to'].includes(String(e.relationship))?e.relationship as Relationship:'relates_to';const id=`${source}|${target}|${relationship}`;if(edgeIds.has(id)){console.warn('Dropped duplicate edge');continue;}edgeIds.add(id);edges.push({source,target,relationship});}
- return {chatResponse:obj.chatResponse,nodes,edges};
-}
-const prompt=`You are an assistant for domain experts. Respond strictly in JSON with no extra keys or markdown fences matching {"chatResponse":"Text answer","nodes":[{"id":"unique-kebab-slug","label":"Concept Name","category":"Method|Tool|Theory","summary":"1-2 sentence overview","quote":"Direct snippet from chatResponse"}],"edges":[{"source":"node-id-1","target":"node-id-2","relationship":"relates_to|uses|supports"}]}. Categories must be Method, Tool, Theory. Relationships must be relates_to, uses, supports. IDs must be stable lowercase kebab-case. Extract 3-8 key concepts actually discussed. Quotes must be verbatim snippets of chatResponse under 200 characters. Every edge endpoint must appear in nodes or EXISTING_NODES; no self-references. Reuse exact existing IDs for known concepts, including when creating edges. For small talk or no extractable concepts return empty nodes and edges with a chatResponse. Output JSON only.`;
-export async function askLLM(history:{role:'user'|'assistant';content:string}[],existingNodes:{id:string;label:string}[],signal?:AbortSignal):Promise<LLMResult>{
- if(!hasApiKey)throw new Error(missingKeyMessage);
- const client=new OpenAI({apiKey:import.meta.env.VITE_OPENAI_API_KEY,dangerouslyAllowBrowser:true,maxRetries:0});
- const controller=new AbortController();const abort=()=>controller.abort();signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)controller.abort();const timer=setTimeout(abort,45000);
- try{const response=await client.chat.completions.create({model:'gpt-4o-mini',temperature:0.3,max_tokens:2000,response_format:{type:'json_object'},messages:[{role:'system',content:prompt+'\nEXISTING_NODES: '+JSON.stringify(existingNodes)},...history.slice(-20)]},{signal:controller.signal});const choice=response.choices[0];if(!choice||choice.finish_reason==='length')throw new LLMParseError();return parseAndSanitize(choice.message.content??'',existingNodes);
- }catch(e){if(e instanceof LLMParseError)throw e;const status=record(e).status;throw new Error(status===401?'The API key was rejected. Check VITE_OPENAI_API_KEY.':status===429?'Rate limit or quota reached. Wait a moment and retry.':"Couldn't reach the model. Check your connection and retry.");}finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
+const record=(value:unknown):Record<string,unknown>=>value!==null&&typeof value==='object'?value as Record<string,unknown>:{};
+export const openaiModel = import.meta.env.VITE_OPENAI_MODEL?.trim() || 'gpt-4o-mini';
+
+export async function askLLM(
+ history: {role:'user'|'assistant';content:string}[],
+ existingNodes: (ExistingTopic&{label:string})[],
+ signal?: AbortSignal,
+): Promise<LLMResult> {
+ if (!hasApiKey) throw new Error(missingKeyMessage);
+ const client = new OpenAI({
+  apiKey:import.meta.env.VITE_OPENAI_API_KEY.trim(),
+  dangerouslyAllowBrowser:true, // Local prototype only; never publish with a real key.
+  maxRetries:0,
+ });
+ const controller = new AbortController();
+ const abort = () => controller.abort();
+ signal?.addEventListener('abort',abort,{once:true});
+ if(signal?.aborted)controller.abort();
+ const timer = setTimeout(abort,45000);
+ try {
+  const response = await client.chat.completions.create({
+   model:openaiModel,
+   temperature:0.3,
+   max_completion_tokens:3500,
+   response_format:graphResponseFormat,
+   messages:[
+    {role:'system',content:extractionPrompt+'\nEXISTING_NODES: '+JSON.stringify(existingNodes)},
+    ...history.slice(-20),
+   ],
+  },{signal:controller.signal});
+  const choice=response.choices?.[0];
+  if(!choice || choice.finish_reason!=='stop' || choice.message?.refusal)throw new LLMParseError();
+  const userPrompt=[...history].reverse().find(message=>message.role==='user')?.content??'';
+  return parseAndSanitize(choice.message?.content??'',existingNodes,userPrompt,true);
+ } catch(error) {
+  if(error instanceof LLMParseError)throw error;
+  if(error instanceof SyntaxError)throw new LLMParseError();
+  const status=record(error).status;
+  if(status===401||status===403)throw new Error('The OpenAI API key was rejected or lacks access. Check VITE_OPENAI_API_KEY.');
+  if(status===429)throw new Error('Rate limit or quota reached. Wait a moment and retry.');
+  if(status===404)throw new Error('The OpenAI model is unavailable. Check VITE_OPENAI_MODEL in .env.local.');
+  if(status===400)throw new Error('OpenAI rejected the request. Check your OpenAI API key and model settings.');
+  throw new Error("Couldn't reach the model. Check your connection and retry.");
+ } finally {
+  clearTimeout(timer);
+  signal?.removeEventListener('abort',abort);
+ }
 }
