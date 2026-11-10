@@ -1,5 +1,6 @@
 import type {ChatMessage,ChatSession,Concept,WorkspaceSnapshot} from '../types';
-import {MarkerType,type Edge} from '@xyflow/react';
+import type {Edge} from '@xyflow/react';
+import {styledConnection,type ConnectionData} from './connections';
 import {createChatSession} from './sessions';
 
 export const WORKSPACE_STORAGE_KEY='cogniverse.workspace.v1';
@@ -11,7 +12,7 @@ const unique=(values:string[])=>new Set(values).size===values.length;
 
 export function createWorkspace():WorkspaceSnapshot {
  const session=createChatSession();
- return {version:1,sessions:[session],activeSessionId:session.id,nodes:[],edges:[],mode:'demo'};
+ return {version:1,sessions:[session],activeSessionId:session.id,nodes:[],edges:[],mode:'demo',deletedConnections:[]};
 }
 
 function validMessage(value:unknown):value is ChatMessage {
@@ -38,7 +39,10 @@ function validNode(value:unknown):value is Concept {
 }
 function validEdge(value:unknown):value is Edge {
  return object(value)&&id(value.id)&&id(value.source)&&id(value.target)&&object(value.data)&&id(value.data.relationship)
-  &&(value.data.kind===undefined||value.data.kind==='shared_topic')&&validEvidence(value.data.evidence);
+  &&(value.data.kind===undefined||value.data.kind==='shared_topic')&&validEvidence(value.data.evidence)
+  &&(value.data.userCreated===undefined||typeof value.data.userCreated==='boolean')
+  &&(value.data.manuallyEdited===undefined||typeof value.data.manuallyEdited==='boolean')
+  &&(value.data.originalRelationship===undefined||id(value.data.originalRelationship));
 }
 
 export function parseWorkspace(raw:string):WorkspaceSnapshot|null {
@@ -48,6 +52,7 @@ export function parseWorkspace(raw:string):WorkspaceSnapshot|null {
    ||!Array.isArray(saved.nodes)||!saved.nodes.every(validNode)||!Array.isArray(saved.edges)||!saved.edges.every(validEdge)
    ||(saved.mode!=='demo'&&saved.mode!=='openai'))return null;
   const sessions=saved.sessions;
+  if(saved.deletedConnections!==undefined&&(!Array.isArray(saved.deletedConnections)||!saved.deletedConnections.every(id)))return null;
   if(saved.pendingSessionId!==undefined&&saved.pendingSessionId!==null&&!id(saved.pendingSessionId))return null;
   if(!unique(sessions.map(session=>session.id))||!unique(sessions.flatMap(session=>session.messages.map(message=>message.id)))
    ||!unique(saved.nodes.map(node=>node.id))||!unique(saved.edges.map(edge=>edge.id)))return null;
@@ -60,22 +65,20 @@ export function parseWorkspace(raw:string):WorkspaceSnapshot|null {
    ...(node.data.details!==undefined?{details:node.data.details}:{}),...(node.data.focus?{focus:node.data.focus}:{}),isNew:false,
   }}));
   // Edge appearance comes from app logic, never arbitrary persisted style objects.
-  const edges:Edge[]=saved.edges.map(edge=>{
-   const relationship=String(edge.data!.relationship),shared=edge.data!.kind==='shared_topic';
-   return {id:edge.id,source:edge.source,target:edge.target,label:relationship.replace(/_/g,' '),data:{relationship,
-    ...(shared?{kind:'shared_topic'}:{}),...(edge.data!.evidence?{evidence:edge.data!.evidence}:{})},
-    markerEnd:shared?undefined:{type:MarkerType.ArrowClosed,color:'#9aa5b3'},
-    style:{stroke:'#9aa5b3',strokeDasharray:shared?'4 4':relationship==='supports'?'6 4':relationship==='relates_to'?'2 4':undefined},
-    labelStyle:{fontSize:10,fill:'#718096'},labelBgStyle:{fill:'#f8fafb'},labelBgPadding:[6,4],
-   };
-  });
+  const edges:Edge[]=saved.edges.map(edge=>styledConnection(edge.id,edge.source,edge.target,{
+   relationship:String(edge.data!.relationship),
+   ...(edge.data!.kind==='shared_topic'?{kind:'shared_topic' as const}:{}),
+   ...(edge.data!.evidence?{evidence:edge.data!.evidence as ConnectionData['evidence']}:{}),
+   ...(edge.data!.userCreated?{userCreated:true}:{}),...(edge.data!.manuallyEdited?{manuallyEdited:true}:{}),
+   ...(edge.data!.originalRelationship?{originalRelationship:String(edge.data!.originalRelationship)}:{}),
+  }));
   const recoveredSessions=sessions.map(session=>{
    if(session.id!==saved.pendingSessionId||session.messages.at(-1)?.role!=='user')return session;
    return {...session,messages:[...session.messages,{
     id:crypto.randomUUID(),role:'error' as const,content:'This reply was interrupted when the page closed. Retry to continue.',createdAt:Date.now(),
    }]};
   });
-  return {version:1,sessions:recoveredSessions,activeSessionId:sessions.some(session=>session.id===saved.activeSessionId)?String(saved.activeSessionId):sessions[0].id,nodes,edges,mode:saved.mode};
+  return {version:1,sessions:recoveredSessions,activeSessionId:sessions.some(session=>session.id===saved.activeSessionId)?String(saved.activeSessionId):sessions[0].id,nodes,edges,mode:saved.mode,deletedConnections:(saved.deletedConnections as string[]|undefined)??[]};
  }catch{return null;}
 }
 

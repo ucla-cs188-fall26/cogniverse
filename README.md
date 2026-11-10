@@ -28,6 +28,17 @@ Click a concept chip to read its full answer, source excerpt, and neighbors. Dra
 
 The displayed sample questions, answers, nodes, and edges are in `src/services/topicDemos.ts`. Edit `topicDemoScenarios` to create your own walkthroughs. The earlier research samples remain available by typing their original questions.
 
+## Edit graph connections
+
+- **Add:** click **Add connection** above the graph, choose two topics, enter a name, and save. You can also click **Add** under a node's connected topics, or drag from one node's bottom handle to another node's top handle to open a prefilled editor.
+- **Rename:** click a connection line, or choose **Edit connection** in a node's details. Edit **Connection name**, then choose **Save changes**.
+- **Delete:** open the connection editor and choose **Delete connection**. The topics and their chat histories remain intact.
+- **Direction:** new connections can be shared (no arrow), such as **cooking**, or directional (from → to). A drag-created link defaults to directional. Names can contain spaces and punctuation, up to 80 characters.
+
+Cancel or Escape discards an unfinished form. Empty names, self-links, missing topics, and duplicate connections are rejected with a helpful message. The connection editor keeps original source excerpts when an automatically generated link is renamed and marks user-created or edited labels separately.
+
+All connection changes apply across chats, are saved in this browser, and appear in graph exports. Future replies preserve renamed labels and do not recreate a deleted relationship between the same endpoints (including reversed shared links). You can explicitly add a deleted connection again; **Reset all** clears these preferences along with the workspace.
+
 ## Multiple chats, one graph
 
 Use **New chat** above the message history to start a separate conversation. The chat dropdown switches histories; the pencil button renames the active chat. New chats are automatically named after their first question. Each chat also keeps its own unsent draft.

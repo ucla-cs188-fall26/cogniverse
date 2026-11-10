@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {ArrowDownLeft,ArrowUpRight,X,Quote,ArrowRight,Pencil,Check} from 'lucide-react';
+import {ArrowDownLeft,ArrowUpRight,X,Quote,ArrowRight,Pencil,Check,Plus} from 'lucide-react';
 import type {Edge} from '@xyflow/react';
 import {type Concept,type GraphEvidence} from '../types';
 import type {ConceptEdits} from '../lib/nodeEdit';
@@ -13,6 +13,8 @@ type InspectorProps={
  onSelect:(id:string)=>void;
  onShowChat:(id:string)=>void;
  onSave:(id:string,edits:ConceptEdits)=>void;
+ onAddConnection:(nodeId:string)=>void;
+ onEditConnection:(edgeId:string)=>void;
 };
 
 function ConceptEditor({node,onSave,onCancel}:{node:Concept;onSave:InspectorProps['onSave'];onCancel:()=>void}){
@@ -54,7 +56,7 @@ function ConceptEditor({node,onSave,onCancel}:{node:Concept;onSave:InspectorProp
  </form>;
 }
 
-function InspectorContent({node,nodes,edges,onSelect,onShowChat,onSave,sessionTitles}:{node:Concept}&Pick<InspectorProps,'nodes'|'edges'|'onSelect'|'onShowChat'|'onSave'|'sessionTitles'>){
+function InspectorContent({node,nodes,edges,onSelect,onShowChat,onSave,sessionTitles,onAddConnection,onEditConnection}:{node:Concept}&Pick<InspectorProps,'nodes'|'edges'|'onSelect'|'onShowChat'|'onSave'|'sessionTitles'|'onAddConnection'|'onEditConnection'>){
  const [editing,setEditing]=useState(false);
  const [saved,setSaved]=useState(false);
  const editButton=useRef<HTMLButtonElement>(null);
@@ -87,23 +89,23 @@ function InspectorContent({node,nodes,edges,onSelect,onShowChat,onSave,sessionTi
    <button className="text-button" onClick={()=>onShowChat(node.data.evidence?.messageId||node.data.firstSeenMessageId)}>Show in chat <ArrowRight size={14}/></button>
   </section>
   {node.data.evidence&&node.data.quote!==node.data.evidence.quote&&<section><h3>Edited context</h3><p>{node.data.quote||'No excerpt available.'}</p></section>}
-  <section><h3>Connected concepts <span>{connections.length}</span></h3>
+  <section><div className="connections-heading"><h3>Connected topics <span>{connections.length}</span></h3><button className="text-button" disabled={nodes.length<2} onClick={()=>onAddConnection(node.id)}><Plus size={13}/>Add</button></div>
    <div className="connections">{connections.length?connections.map(edge=>{
     const outgoing=edge.source===node.id;
     const neighbor=nodes.find(item=>item.id===(outgoing?edge.target:edge.source));
     const evidence=edge.data?.evidence as GraphEvidence|undefined;
-    return neighbor&&<button key={edge.id} onClick={()=>onSelect(neighbor.id)}>
-     <div className="relation">{edge.data?.kind==='shared_topic'?'Shared topic:':outgoing?<ArrowUpRight size={14}/>:<ArrowDownLeft size={14}/>} {String(edge.data?.relationship??'relates_to').replace(/_/g,' ')}</div>
+    return neighbor&&<div key={edge.id} className="connection-row"><button className="connection-neighbor" onClick={()=>onSelect(neighbor.id)}>
+     <div className="relation">{edge.data?.kind==='shared_topic'?(edge.data?.userCreated||edge.data?.manuallyEdited?'Connection:':'Shared topic:'):outgoing?<ArrowUpRight size={14}/>:<ArrowDownLeft size={14}/>} {typeof edge.label==='string'?edge.label:String(edge.data?.relationship??'relates_to').replace(/_/g,' ')}</div>
      <strong>{neighbor.data.label}</strong>
-     {edge.data?.kind==='shared_topic'&&<span className="connection-evidence">Inferred from the topics of both questions.</span>}
-     {evidence&&<span className="connection-evidence"><span>{evidence.source==='user'?'Your prompt':'AI answer'}</span> “{evidence.quote}”</span>}
-    </button>;
+     {edge.data?.userCreated||edge.data?.manuallyEdited?<span className="connection-evidence">Named by you.</span>:edge.data?.kind==='shared_topic'&&<span className="connection-evidence">Inferred from the topics of both questions.</span>}
+     {evidence&&<span className="connection-evidence"><span>{edge.data?.manuallyEdited?'Original excerpt · ':''}{evidence.source==='user'?'Your prompt':'AI answer'}</span> “{evidence.quote}”</span>}
+    </button><button className="connection-edit-link" onClick={()=>onEditConnection(edge.id)}><Pencil size={12}/>Edit connection</button></div>;
    }):<p>No connections yet.</p>}</div>
   </section>
  </>;
 }
 
-export function NodeInspector({node,nodes,edges,onClose,onSelect,onShowChat,onSave,sessionTitles}:InspectorProps){
+export function NodeInspector({node,nodes,edges,onClose,onSelect,onShowChat,onSave,sessionTitles,onAddConnection,onEditConnection}:InspectorProps){
  const drawer=useRef<HTMLElement>(null);
  const open=Boolean(node);
  useEffect(()=>{
@@ -121,7 +123,7 @@ export function NodeInspector({node,nodes,edges,onClose,onSelect,onShowChat,onSa
  return <aside ref={drawer} tabIndex={-1} role="dialog" aria-modal="false" aria-label="Topic details" aria-hidden={!open} className={`inspector ${open?'open':''}`}>
   {node&&<>
    <div className="inspector-top"><span className="eyebrow">TOPIC DETAILS</span><button className="icon-button" onClick={onClose} aria-label="Close topic details"><X size={18}/></button></div>
-   <InspectorContent sessionTitles={sessionTitles} key={node.id} node={node} nodes={nodes} edges={edges} onSelect={onSelect} onShowChat={onShowChat} onSave={onSave}/>
+   <InspectorContent onAddConnection={onAddConnection} onEditConnection={onEditConnection} sessionTitles={sessionTitles} key={node.id} node={node} nodes={nodes} edges={edges} onSelect={onSelect} onShowChat={onShowChat} onSave={onSave}/>
   </>}
  </aside>;
 }

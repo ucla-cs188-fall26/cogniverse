@@ -12,4 +12,4 @@ export type Concept = Node<ConceptNodeData>;
 export interface ChatMessage {id:string;role:'user'|'assistant'|'error';content:string;createdAt:number;nodeIds?:string[];source?:'demo'|'openai'}
 
 export interface ChatSession { id:string; title:string; createdAt:number; messages:ChatMessage[]; draft:string; customTitle?:boolean }
-export interface WorkspaceSnapshot { version:1; sessions:ChatSession[]; activeSessionId:string; nodes:Concept[]; edges:import('@xyflow/react').Edge[]; mode:'demo'|'openai'; pendingSessionId?:string|null }
+export interface WorkspaceSnapshot { version:1; sessions:ChatSession[]; activeSessionId:string; nodes:Concept[]; edges:import('@xyflow/react').Edge[]; mode:'demo'|'openai'; pendingSessionId?:string|null; deletedConnections?:string[] }
