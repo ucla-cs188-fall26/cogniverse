@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import type {ChatMessage} from '../types';
 import {conversationHistory,createChatSession,findMessageSession,renameSession,setSessionMessages,updateSession} from './sessions';
-import {getMockResult} from '../services/mockLLM';
+import {getFixtureResult} from '../test/fixtures/conversations';
 import {mergeGraph} from './graphMerge';
 
 const message=(id:string,content:string,role:ChatMessage['role']='user'):ChatMessage=>({id,content,role,createdAt:1});
@@ -33,9 +33,9 @@ describe('independent chats with one graph',()=>{
  });
  it('connects burger and spaghetti from different chats and preserves their source sessions',()=>{
   const a=createChatSession(),b=createChatSession();
-  const burger=getMockResult('How to make a burger');
+  const burger=getFixtureResult('How to make a burger');
   const first=mergeGraph([],[],burger,'a-answer','a-question','How to make a burger',a.id);
-  const spaghetti=getMockResult('How do I make spaghetti?',first.nodes.map(node=>({id:node.id,label:node.data.label})));
+  const spaghetti=getFixtureResult('How do I make spaghetti?',first.nodes.map(node=>({id:node.id,label:node.data.label})));
   const second=mergeGraph(first.nodes,first.edges,spaghetti,'b-answer','b-question','How do I make spaghetti?',b.id);
   expect(second.nodes).toHaveLength(2);expect(second.edges[0].label).toBe('cooking');
   expect(second.nodes[0].data.answers?.[0].sessionId).toBe(a.id);
@@ -46,8 +46,8 @@ describe('independent chats with one graph',()=>{
   expect(findMessageSession(sessions,second.nodes[1].data.evidence!.messageId!)?.id).toBe(b.id);
  });
  it('appends answers from separate chats to the same topic without losing its original source',()=>{
-  const first=mergeGraph([],[],getMockResult('How to make a burger'),'a1','q1','How to make a burger','chat-a');
-  const second=mergeGraph(first.nodes,first.edges,getMockResult('How to make a burger'),'a2','q2','How to make a burger','chat-b');
+  const first=mergeGraph([],[],getFixtureResult('How to make a burger'),'a1','q1','How to make a burger','chat-a');
+  const second=mergeGraph(first.nodes,first.edges,getFixtureResult('How to make a burger'),'a2','q2','How to make a burger','chat-b');
   expect(second.nodes).toHaveLength(1);
   expect(second.nodes[0].data.answers?.map(answer=>answer.sessionId)).toEqual(['chat-a','chat-b']);
   expect(second.nodes[0].data.evidence?.sessionId).toBe('chat-a');

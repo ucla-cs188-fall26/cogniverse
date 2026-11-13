@@ -1,10 +1,10 @@
 import {describe,expect,it} from 'vitest';
 import {parseAndSanitize} from './extraction';
 import {mergeGraph} from '../lib/graphMerge';
-import {topicDemoScenarios} from './topicDemos';
-import {getMockResult} from './mockLLM';
+import {topicFixtures} from '../test/fixtures/topics';
+import {getFixtureResult} from '../test/fixtures/conversations';
 
-const burger=topicDemoScenarios[0];
+const burger=topicFixtures[0];
 const existing=[{id:'make-a-burger',label:'Make a burger',question:'How to make a burger',focus:'burger'}];
 const spaghetti={
  chatResponse:'Spaghetti recipe\nIngredients: spaghetti, tomatoes, olive oil.\nCook the pasta and toss with tomato sauce.',
@@ -70,8 +70,8 @@ describe('separate subjects and shared topics',()=>{
   const third=mergeGraph(second.nodes,second.edges,{...burger.result,edges:[{source:'make-a-burger',target:'make-spaghetti',relationship:'cooking',kind:'shared_topic'}]},'a3','q3','How to make a burger');
   expect(third.edges).toHaveLength(1);
  });
- it('reproduces the requested burger → spaghetti behavior in demo mode',()=>{
-  const result=getMockResult('how do i make spaghetti',existing);
+ it('reproduces the requested burger → spaghetti behavior using conversation fixtures',()=>{
+  const result=getFixtureResult('how do i make spaghetti',existing);
   expect(result.primaryTopicId).toBe('make-spaghetti');expect(result.edges[0]).toMatchObject({relationship:'cooking',kind:'shared_topic'});
   const parsed=parseAndSanitize(JSON.stringify(result),existing,'how do i make spaghetti');
   expect(parsed).toEqual(result);

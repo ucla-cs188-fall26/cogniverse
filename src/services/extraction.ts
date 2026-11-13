@@ -163,7 +163,7 @@ export function parseAndSanitize(raw:string,existingNodes:ExistingTopic[]=[],use
   seen.add(id);
   nodes.push({id,label:n.label.trim(),summary:typeof n.summary==='string'?n.summary.slice(0,400):'',quote:evidence.quote,evidence});
  }
- // Also accept our own serialized demo/export result shape.
+ // Also accept our own serialized graph result shape.
  if(!primaryTopicId&&typeof obj.primaryTopicId==='string'){
   const id=aliases.get(slugify(obj.primaryTopicId))??slugify(obj.primaryTopicId);
   if(seen.has(id))primaryTopicId=id;

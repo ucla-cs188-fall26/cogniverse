@@ -1,15 +1,15 @@
 import {describe,expect,it} from 'vitest';
 import {deleteTopic,restoreTopic} from './nodeDelete';
 import {mergeGraph} from './graphMerge';
-import {getMockResult} from '../services/mockLLM';
+import {getFixtureResult} from '../test/fixtures/conversations';
 import {addConnection,deleteConnection,renameConnection} from './connections';
 import {createWorkspace,parseWorkspace} from './workspace';
 import {createChatSession} from './sessions';
 
 const graph=()=>{
- const burger=mergeGraph([],[],getMockResult('How to make a burger'),'a1','q1','How to make a burger','chat-a');
- const spaghetti=mergeGraph(burger.nodes,burger.edges,getMockResult('How do I make spaghetti?',burger.nodes.map(node=>({id:node.id,label:node.data.label}))),'a2','q2','How do I make spaghetti?','chat-b');
- return mergeGraph(spaghetti.nodes,spaghetti.edges,getMockResult('How do I caramelize onions for my burger?'),'a3','q3','How do I caramelize onions for my burger?','chat-c');
+ const burger=mergeGraph([],[],getFixtureResult('How to make a burger'),'a1','q1','How to make a burger','chat-a');
+ const spaghetti=mergeGraph(burger.nodes,burger.edges,getFixtureResult('How do I make spaghetti?',burger.nodes.map(node=>({id:node.id,label:node.data.label}))),'a2','q2','How do I make spaghetti?','chat-b');
+ return mergeGraph(spaghetti.nodes,spaghetti.edges,getFixtureResult('How do I caramelize onions for my burger?'),'a3','q3','How do I caramelize onions for my burger?','chat-c');
 };
 
 describe('cascading topic deletion',()=>{
@@ -26,7 +26,7 @@ describe('cascading topic deletion',()=>{
  });
  it('leaves original chat messages intact and lets source chips disappear by node lookup',()=>{
   const initial=graph(),session=createChatSession();
-  session.messages=[{id:'q1',role:'user',content:'How to make a burger',createdAt:1},{id:'a1',role:'assistant',content:getMockResult('How to make a burger').chatResponse,createdAt:2,nodeIds:['make-a-burger']}];
+  session.messages=[{id:'q1',role:'user',content:'How to make a burger',createdAt:1},{id:'a1',role:'assistant',content:getFixtureResult('How to make a burger').chatResponse,createdAt:2,nodeIds:['make-a-burger']}];
   const before=structuredClone(session);
   const deleted=deleteTopic(initial.nodes,initial.edges,[],'make-a-burger');
   expect(session).toEqual(before);expect(session.messages).toHaveLength(2);
@@ -34,7 +34,7 @@ describe('cascading topic deletion',()=>{
  });
  it('suppresses a deleted topic and its edges even when an in-flight response has a stale graph snapshot',()=>{
   const initial=graph(),deleted=deleteTopic(initial.nodes,initial.edges,[],'make-a-burger');
-  const result=getMockResult('How to make a burger');
+  const result=getFixtureResult('How to make a burger');
   result.edges.push({source:'make-a-burger',target:'make-spaghetti',relationship:'cooking',kind:'shared_topic'});
   const merged=mergeGraph(initial.nodes,initial.edges,result,'late-answer','q4','How to make a burger','chat-d',[],deleted.deletedNodeIds);
   expect(merged.nodes.some(node=>node.id==='make-a-burger')).toBe(false);
@@ -60,7 +60,7 @@ describe('cascading topic deletion',()=>{
   expect(restored.edges).toEqual([]);expect(restored.deletedNodeIds).toEqual(['make-spaghetti']);
  });
  it('handles isolated, last, and already missing topics without errors',()=>{
-  const initial=mergeGraph([],[],getMockResult('How to make a burger'),'a1');
+  const initial=mergeGraph([],[],getFixtureResult('How to make a burger'),'a1');
   const deleted=deleteTopic(initial.nodes,[],[],'make-a-burger');
   expect(deleted.nodes).toEqual([]);expect(deleted.edges).toEqual([]);
   const again=deleteTopic(deleted.nodes,deleted.edges,deleted.deletedNodeIds,'make-a-burger');

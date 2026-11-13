@@ -1,9 +1,9 @@
-import type { LLMResult } from '../types';
-import {topicDemoScenarios} from './topicDemos';
+import type { LLMResult } from '../../types';
+import {topicFixtures} from './topics';
 
-type DemoScenario = { id:string; title:string; question:string; result:LLMResult };
+type ConversationFixture = { id:string; title:string; question:string; result:LLMResult };
 
-const samples: DemoScenario[] = [
+const samples: ConversationFixture[] = [
  {
   id:'research', title:'Research methods',
   question:'Explain the main qualitative research methods used in HCI',
@@ -115,7 +115,7 @@ const edgeQuotes:Record<string,string[]>={
   'A prototype makes a proposed interaction tangible enough to examine in context.',
  ],
 };
-export const demoScenarios:DemoScenario[]=samples.map(sample=>({
+export const conversationFixtures:ConversationFixture[]=samples.map(sample=>({
  ...sample,result:{...sample.result,
   nodes:sample.result.nodes.map(node=>{
    const inPrompt=sample.question.toLowerCase().includes(node.label.toLowerCase());
@@ -126,12 +126,12 @@ export const demoScenarios:DemoScenario[]=samples.map(sample=>({
  },
 }));
 
-export function getMockResult(question:string,existingNodes:{id:string;label:string}[]=[]):LLMResult {
+export function getFixtureResult(question:string,existingNodes:{id:string;label:string}[]=[]):LLMResult {
  const text=question.toLowerCase();
- const allSamples=[...topicDemoScenarios,...demoScenarios];
+ const allSamples=[...topicFixtures,...conversationFixtures];
  const scenario=allSamples.find(sample=>sample.question.toLowerCase()===text.trim())
-  ?? topicDemoScenarios.find(sample=>sample.id===(/spaghetti/.test(text)?'spaghetti':/carameliz|onion/.test(text)?'onions':/burger/.test(text)?'burger':/python|async|await|coroutine/.test(text)?'python':/basketball|zone defense/.test(text)?'basketball':''))
-  ?? demoScenarios.find(sample=>sample.id===(/thematic|coding|affinity/.test(text)?'themes':/usability|heuristic/.test(text)?'evaluation':/activity|mediation/.test(text)?'activity':/qualitative|research|interview|observation/.test(text)?'research':''));
+  ?? topicFixtures.find(sample=>sample.id===(/spaghetti/.test(text)?'spaghetti':/carameliz|onion/.test(text)?'onions':/burger/.test(text)?'burger':/python|async|await|coroutine/.test(text)?'python':/basketball|zone defense/.test(text)?'basketball':''))
+  ?? conversationFixtures.find(sample=>sample.id===(/thematic|coding|affinity/.test(text)?'themes':/usability|heuristic/.test(text)?'evaluation':/activity|mediation/.test(text)?'activity':/qualitative|research|interview|observation/.test(text)?'research':''));
  // Return an independent result so graph state can never mutate the fixture.
  if(scenario){
   const result=structuredClone(scenario.result);
@@ -140,23 +140,5 @@ export function getMockResult(question:string,existingNodes:{id:string;label:str
   }
   return result;
  }
- return {
-  chatResponse:'This demo uses sample answers rather than a live model. Choose Make a burger, Make spaghetti, Caramelize onions, Coding: async/await, or Sports: zone defense below to build the graph. Click a topic to read its full answer. The onion recipe connects to the burger as an optional topping.',
-  nodes:[],edges:[],
- };
-}
-
-export async function askMockLLM(
- history:{role:'user'|'assistant';content:string}[],
- existingNodes:{id:string;label:string}[],
- signal?:AbortSignal,
-):Promise<LLMResult> {
- await new Promise<void>((resolve,reject)=>{
-  if(signal?.aborted){reject(new DOMException('Aborted','AbortError'));return;}
-  const abort=()=>{clearTimeout(timer);reject(new DOMException('Aborted','AbortError'));};
-  const timer=setTimeout(()=>{signal?.removeEventListener('abort',abort);resolve();},650);
-  signal?.addEventListener('abort',abort,{once:true});
- });
- const question=[...history].reverse().find(message=>message.role==='user')?.content??'';
- return getMockResult(question,existingNodes);
+ throw new Error(`Unknown conversation fixture: ${question}`);
 }

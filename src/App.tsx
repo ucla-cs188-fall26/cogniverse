@@ -3,7 +3,6 @@ import {Background,Controls,MiniMap,ReactFlow,ReactFlowProvider,useEdgesState,us
 import {Download,Network,RotateCcw,Waypoints,Info,Plus,X} from 'lucide-react';
 import type {ChatMessage,Concept,WorkspaceSnapshot} from './types';
 import {askLLM,hasApiKey,missingKeyMessage} from './services/llm';
-import {askMockLLM} from './services/mockLLM';
 import {updateConcept,type ConceptEdits} from './lib/nodeEdit';
 import {mergeGraph} from './lib/graphMerge';
 import {deleteTopic,restoreTopic,type DeletedTopic} from './lib/nodeDelete';
@@ -22,7 +21,6 @@ function Workspace(){
  const [initial]=useState(loadWorkspace);
  const [sessions,setSessions]=useState(initial.workspace.sessions);
  const [activeSessionId,setActiveSessionId]=useState(initial.workspace.activeSessionId);
- const [mode,setMode]=useState<'demo'|'openai'>(initial.workspace.mode);
  const [selectedId,setSelectedId]=useState<string|null>(null);
  const [connectionEditor,setConnectionEditor]=useState<ConnectionEditorRequest|null>(null);
  const [deletedConnections,setDeletedConnections]=useState(initial.workspace.deletedConnections??[]);
@@ -43,12 +41,12 @@ function Workspace(){
  const graphPanel=useRef<HTMLElement>(null);
  const active=sessions.find(session=>session.id===activeSessionId)??sessions[0];
  const selected=nodes.find(node=>node.id===selectedId);
- const isDemo=mode==='demo',canSend=isDemo||hasApiKey;
+ const canSend=hasApiKey;
  const loading=pendingSessionId===active.id;
  const otherChatLoading=Boolean(pendingSessionId&&!loading);
  const pendingTitle=sessions.find(session=>session.id===pendingSessionId)?.title;
  const snapshot=useRef<WorkspaceSnapshot>(initial.workspace);
- snapshot.current={version:1,sessions,activeSessionId:active.id,nodes,edges,mode,pendingSessionId,deletedConnections,deletedNodeIds};
+ snapshot.current={version:1,sessions,activeSessionId:active.id,nodes,edges,pendingSessionId,deletedConnections,deletedNodeIds};
 
  const close=useCallback(()=>{
   setSelectedId(null);setConnectionEditor(null);setEdges(current=>current.map(edge=>edge.selected?{...edge,selected:false}:edge));setNodes(current=>current.map(node=>node.selected?{...node,selected:false}:node));
@@ -80,7 +78,7 @@ function Workspace(){
    setStorageError(saved?undefined:'This browser could not save your workspace. Keep this tab open; recent changes may be lost on reload.');
   },350);
   return()=>clearTimeout(timer);
- },[sessions,activeSessionId,nodes,edges,mode,pendingSessionId,deletedConnections,deletedNodeIds]);
+ },[sessions,activeSessionId,nodes,edges,pendingSessionId,deletedConnections,deletedNodeIds]);
  useEffect(()=>{
   const flush=()=>{saveWorkspace(snapshot.current);};
   window.addEventListener('pagehide',flush);
@@ -115,7 +113,7 @@ function Workspace(){
   try{
    // Only this chat's messages become conversational context. All chats share graph IDs.
    const history=conversationHistory({...active,messages:next});
-   const result=await (isDemo?askMockLLM:askLLM)(history,nodeState.current.map(node=>({
+   const result=await askLLM(history,nodeState.current.map(node=>({
     id:node.id,label:node.data.label,question:node.data.answers?.[0]?.question,focus:node.data.focus,
    })),abort.signal);
    if(token!==request.current)return;
@@ -123,7 +121,7 @@ function Workspace(){
    const merged=mergeGraph(nodeState.current,edgeState.current,result,id,userMessage?.id,userMessage?.content,sessionId,deletedState.current,deletedNodesState.current);
    nodeState.current=merged.nodes;setNodes(merged.nodes);edgeState.current=merged.edges;setEdges(merged.edges);
    setSessions(current=>setSessionMessages(current,sessionId,[...next,{
-    id,role:'assistant',source:mode,content:result.chatResponse,nodeIds:[...new Set(result.nodes.map(node=>node.id))],createdAt:Date.now(),
+    id,role:'assistant',source:'openai',content:result.chatResponse,nodeIds:[...new Set(result.nodes.map(node=>node.id))],createdAt:Date.now(),
    }]));
    if(merged.addedNodeIds.length)fit();
   }catch(error){
@@ -183,7 +181,7 @@ function Workspace(){
  function reset(){
   if(!window.confirm('Reset the workspace? This clears ALL chats and the shared knowledge graph, including saved browser data.'))return;
   request.current++;controller.current?.abort();busy.current=false;setPendingSessionId(null);setSelectedId(null);setMessageToShow(null);
-  const fresh=createWorkspace();fresh.mode=mode;
+  const fresh=createWorkspace();
   setSessions(fresh.sessions);setActiveSessionId(fresh.activeSessionId);nodeState.current=[];setNodes([]);deletedNodesState.current=[];setDeletedNodeIds([]);setLastDeletedTopic(null);edgeState.current=[];setEdges([]);deletedState.current=[];setDeletedConnections([]);setConnectionEditor(null);
   snapshot.current=fresh;saveWorkspace(fresh);
  }
@@ -193,12 +191,12 @@ function Workspace(){
  }
  return <div className="app-shell">
   <header className="app-header"><div className="brand"><div className="brand-mark"><Waypoints size={23}/></div><span>cogniverse<span className="brand-dot">.</span></span><span className="prototype">LOCAL PREVIEW</span></div>
-   <div className="header-actions"><select className="mode-select" aria-label="Response mode" value={mode} disabled={pendingSessionId!==null} onChange={event=>setMode(event.target.value as 'demo'|'openai')}><option value="demo">Demo mode</option><option value="openai">OpenAI API</option></select><span className="local-status"><i/> Local workspace</span><button onClick={reset} aria-label="Reset all chats and graph"><RotateCcw size={15}/><span>Reset all</span></button></div>
+   <div className="header-actions"><span className="local-status"><i/> Local workspace</span><button onClick={reset} aria-label="Reset all chats and graph"><RotateCcw size={15}/><span>Reset all</span></button></div>
   </header>
-  {!isDemo&&!hasApiKey&&<div className="error-banner" role="alert"><Info size={16}/><span>{missingKeyMessage}</span></div>}
+  {!hasApiKey&&<div className="error-banner" role="alert"><Info size={16}/><span>{missingKeyMessage}</span></div>}
   {storageError&&<div className="error-banner" role="alert"><Info size={16}/><span>{storageError}</span></div>}
   <main className="workspace">
-   <ChatPanel key={active.id} isDemo={isDemo} messages={active.messages} nodes={nodes} loading={loading} disabled={!canSend||otherChatLoading}
+   <ChatPanel key={active.id} messages={active.messages} nodes={nodes} loading={loading} disabled={!canSend||otherChatLoading}
     draft={active.draft} onDraftChange={draft=>setSessions(current=>updateSession(current,active.id,session=>({...session,draft})))}
     sessionControls={<SessionSwitcher sessions={sessions} activeSessionId={active.id} pendingSessionId={pendingSessionId} onSelect={id=>{setActiveSessionId(id);setMessageToShow(null);}} onNew={newChat} onRename={(id,title)=>setSessions(current=>renameSession(current,id,title))}/>}
     backgroundStatus={otherChatLoading?`A reply is being prepared in “${pendingTitle}”. You can switch chats while it finishes.`:undefined}

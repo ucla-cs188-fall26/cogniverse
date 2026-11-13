@@ -12,7 +12,7 @@ const unique=(values:string[])=>new Set(values).size===values.length;
 
 export function createWorkspace():WorkspaceSnapshot {
  const session=createChatSession();
- return {version:1,sessions:[session],activeSessionId:session.id,nodes:[],edges:[],mode:'demo',deletedConnections:[],deletedNodeIds:[]};
+ return {version:1,sessions:[session],activeSessionId:session.id,nodes:[],edges:[],deletedConnections:[],deletedNodeIds:[]};
 }
 
 function validMessage(value:unknown):value is ChatMessage {
@@ -49,8 +49,7 @@ export function parseWorkspace(raw:string):WorkspaceSnapshot|null {
  try{
   const saved:unknown=JSON.parse(raw);
   if(!object(saved)||saved.version!==1||!Array.isArray(saved.sessions)||!saved.sessions.length||!saved.sessions.every(validSession)
-   ||!Array.isArray(saved.nodes)||!saved.nodes.every(validNode)||!Array.isArray(saved.edges)||!saved.edges.every(validEdge)
-   ||(saved.mode!=='demo'&&saved.mode!=='openai'))return null;
+   ||!Array.isArray(saved.nodes)||!saved.nodes.every(validNode)||!Array.isArray(saved.edges)||!saved.edges.every(validEdge))return null;
   const sessions=saved.sessions;
   if(saved.deletedConnections!==undefined&&(!Array.isArray(saved.deletedConnections)||!saved.deletedConnections.every(id)))return null;
   if(saved.deletedNodeIds!==undefined&&(!Array.isArray(saved.deletedNodeIds)||!saved.deletedNodeIds.every(id)))return null;
@@ -79,7 +78,7 @@ export function parseWorkspace(raw:string):WorkspaceSnapshot|null {
     id:crypto.randomUUID(),role:'error' as const,content:'This reply was interrupted when the page closed. Retry to continue.',createdAt:Date.now(),
    }]};
   });
-  return {version:1,sessions:recoveredSessions,activeSessionId:sessions.some(session=>session.id===saved.activeSessionId)?String(saved.activeSessionId):sessions[0].id,nodes,edges,mode:saved.mode,deletedConnections:(saved.deletedConnections as string[]|undefined)??[],deletedNodeIds:(saved.deletedNodeIds as string[]|undefined)??[]};
+  return {version:1,sessions:recoveredSessions,activeSessionId:sessions.some(session=>session.id===saved.activeSessionId)?String(saved.activeSessionId):sessions[0].id,nodes,edges,deletedConnections:(saved.deletedConnections as string[]|undefined)??[],deletedNodeIds:(saved.deletedNodeIds as string[]|undefined)??[]};
  }catch{return null;}
 }
 

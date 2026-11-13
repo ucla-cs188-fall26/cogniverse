@@ -1,10 +1,10 @@
-import type {Evidence,LLMNode,LLMEdge,LLMResult} from '../types';
+import type {Evidence,LLMNode,LLMEdge,LLMResult} from '../../types';
 
 type TopicDemo={id:string;title:string;question:string;result:LLMResult};
 const node=(id:string,label:string,summary:string,source:Evidence['source'],quote:string):LLMNode=>({id,label,summary,quote,evidence:{source,quote}});
 const edge=(source:string,target:string,relationship:string,quote:string):LLMEdge=>({source,target,relationship,evidence:{source:'assistant',quote}});
 
-export const topicDemoScenarios:TopicDemo[]=[
+export const topicFixtures:TopicDemo[]=[
  {
   id:'burger',title:'Make a burger',question:'How to make a burger',
   result:{

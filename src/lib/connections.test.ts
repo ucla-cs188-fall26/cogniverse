@@ -2,12 +2,12 @@ import {describe,expect,it} from 'vitest';
 import {addConnection,connectionKeys,deleteConnection,renameConnection} from './connections';
 import {mergeGraph} from './graphMerge';
 import {createWorkspace,parseWorkspace} from './workspace';
-import {getMockResult} from '../services/mockLLM';
+import {getFixtureResult} from '../test/fixtures/conversations';
 import type {LLMResult} from '../types';
 
 const initial=()=>{
- const a=mergeGraph([],[],getMockResult('How to make a burger'),'a1','q1','How to make a burger','chat-a');
- const result=getMockResult('How do I make spaghetti?',a.nodes.map(n=>({id:n.id,label:n.data.label})));
+ const a=mergeGraph([],[],getFixtureResult('How to make a burger'),'a1','q1','How to make a burger','chat-a');
+ const result=getFixtureResult('How do I make spaghetti?',a.nodes.map(n=>({id:n.id,label:n.data.label})));
  return mergeGraph(a.nodes,a.edges,result,'a2','q2','How do I make spaghetti?','chat-b');
 };
 const suggestion:LLMResult={chatResponse:'Both dishes involve cooking.',nodes:[],edges:[{source:'make-spaghetti',target:'make-a-burger',relationship:'cooking',kind:'shared_topic'}]};
@@ -46,7 +46,7 @@ describe('user-managed connections',()=>{
  });
  it('retains the original supporting excerpt when a factual connection is renamed',()=>{
   const graph=initial();
-  const factual=mergeGraph(graph.nodes,graph.edges,getMockResult('How do I caramelize onions for my burger?'),'a3','q3','How do I caramelize onions for my burger?','chat-c');
+  const factual=mergeGraph(graph.nodes,graph.edges,getFixtureResult('How do I caramelize onions for my burger?'),'a3','q3','How do I caramelize onions for my burger?','chat-c');
   const edge=factual.edges.find(edge=>edge.data?.relationship==='optional_topping_for')!;
   const renamed=renameConnection(factual.edges,edge.id,'Great topping');
   expect(renamed.find(item=>item.id===edge.id)?.data?.evidence).toEqual(edge.data?.evidence);

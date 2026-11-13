@@ -2,10 +2,10 @@ import {describe,expect,it} from 'vitest';
 import {graphResponseFormat,parseAndSanitize} from './extraction';
 import {mergeGraph} from '../lib/graphMerge';
 import {updateConcept} from '../lib/nodeEdit';
-import {topicDemoScenarios} from './topicDemos';
+import {topicFixtures} from '../test/fixtures/topics';
 
 const question='how to make a burger';
-const answer=topicDemoScenarios[0].result.chatResponse;
+const answer=topicFixtures[0].result.chatResponse;
 const parse=(value:unknown,prompt=question,existing:{id:string;label:string}[]=[])=>parseAndSanitize(JSON.stringify(value),existing,prompt,true);
 const response={chatResponse:answer,primaryTopic:{id:'make-a-burger',label:'Make a burger',summary:'A complete recipe.'},nodes:[],edges:[]};
 
@@ -49,8 +49,8 @@ describe('answer-carrying main topics',()=>{
   expect(again.nodes[0].data.answers).toHaveLength(2);
  });
  it('stores linked recipes in their own nodes without splitting ingredients into nodes',()=>{
-  const burger=mergeGraph([],[],topicDemoScenarios[0].result,'burger-answer','burger-question',topicDemoScenarios[0].question);
-  const onions=mergeGraph(burger.nodes,burger.edges,topicDemoScenarios.find(sample=>sample.id==='onions')!.result,'onion-answer','onion-question',topicDemoScenarios.find(sample=>sample.id==='onions')!.question);
+  const burger=mergeGraph([],[],topicFixtures[0].result,'burger-answer','burger-question',topicFixtures[0].question);
+  const onions=mergeGraph(burger.nodes,burger.edges,topicFixtures.find(sample=>sample.id==='onions')!.result,'onion-answer','onion-question',topicFixtures.find(sample=>sample.id==='onions')!.question);
   expect(onions.nodes).toHaveLength(2);expect(onions.edges[0].label).toBe('optional topping for');
   expect(onions.nodes.find(n=>n.id==='make-a-burger')?.data.answers?.[0].answer).toContain('300 g ground beef');
   expect(onions.nodes.find(n=>n.id==='caramelize-onions')?.data.answers?.[0].answer).toContain('2 medium onions');

@@ -2,20 +2,20 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {createWorkspace,loadWorkspace,parseWorkspace,saveWorkspace,WORKSPACE_STORAGE_KEY} from './workspace';
 import {createChatSession} from './sessions';
 import {mergeGraph} from './graphMerge';
-import {getMockResult} from '../services/mockLLM';
+import {getFixtureResult} from '../test/fixtures/conversations';
 import {updateConcept} from './nodeEdit';
 
 const populated=()=>{
  const workspace=createWorkspace();
  const a=workspace.sessions[0],b=createChatSession();
- const burger=getMockResult('How to make a burger');
+ const burger=getFixtureResult('How to make a burger');
  a.title='Cooking';a.draft='Next question';a.messages=[
   {id:'q1',role:'user',content:'How to make a burger',createdAt:1},
   {id:'a1',role:'assistant',content:burger.chatResponse,createdAt:2,nodeIds:['make-a-burger']},
  ];
  const graph=mergeGraph([],[],burger,'a1','q1','How to make a burger',a.id);
  graph.nodes[0].position={x:700,y:900};graph.nodes[0].selected=true;
- workspace.sessions.push(b);workspace.activeSessionId=b.id;workspace.mode='openai';
+ workspace.sessions.push(b);workspace.activeSessionId=b.id;
  workspace.nodes=updateConcept(graph.nodes,'make-a-burger',{label:'My recipe',summary:'My notes',quote:'Context',details:'Use my favorite bun.'});
  workspace.edges=graph.edges;
  return workspace;
@@ -23,17 +23,25 @@ const populated=()=>{
 afterEach(()=>vi.unstubAllGlobals());
 
 describe('local workspace persistence',()=>{
- it('restores chats, drafts, mode, graph details, positions, and answer provenance',()=>{
+ it('restores chats, drafts, graph details, positions, and answer provenance',()=>{
   const original=populated();const restored=parseWorkspace(JSON.stringify(original))!;
   expect(restored.sessions).toEqual(original.sessions);expect(restored.activeSessionId).toBe(original.activeSessionId);
-  expect(restored.mode).toBe('openai');expect(restored.nodes[0].data.details).toBe('Use my favorite bun.');
+ expect(restored.nodes[0].data.details).toBe('Use my favorite bun.');
   expect(restored.nodes[0].position).toEqual({x:700,y:900});
   expect(restored.nodes[0].data.answers).toEqual(original.nodes[0].data.answers);
   expect(restored.nodes[0].data.isNew).toBe(false);expect(restored.nodes[0].selected).toBeUndefined();
  });
+ it.each(['demo','openai'])('preserves legacy %s workspaces while discarding the response mode',mode=>{
+  const original=populated();
+  original.sessions[0].messages[1].source='demo';
+  const restored=parseWorkspace(JSON.stringify({...original,mode}))!;
+  expect(restored.sessions).toEqual(original.sessions);
+  expect(restored.nodes).toHaveLength(original.nodes.length);
+  expect(restored).not.toHaveProperty('mode');
+ });
  it('restores an undirected cross-chat connection with its label and no arrow',()=>{
   const workspace=populated();
-  const result=getMockResult('How do I make spaghetti?',workspace.nodes.map(node=>({id:node.id,label:node.data.label})));
+  const result=getFixtureResult('How do I make spaghetti?',workspace.nodes.map(node=>({id:node.id,label:node.data.label})));
   const graph=mergeGraph(workspace.nodes,workspace.edges,result,'a2','q2','How do I make spaghetti?',workspace.sessions[1].id);
   const restored=parseWorkspace(JSON.stringify({...workspace,...graph}))!;
   expect(restored.edges[0].label).toBe('cooking');expect(restored.edges[0].markerEnd).toBeUndefined();
