@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {ArrowDownLeft,ArrowUpRight,X,Quote,ArrowRight,Pencil,Check,Plus} from 'lucide-react';
+import {ArrowDownLeft,ArrowUpRight,X,Quote,ArrowRight,Pencil,Check,Plus,Trash2} from 'lucide-react';
 import type {Edge} from '@xyflow/react';
 import {type Concept,type GraphEvidence} from '../types';
 import type {ConceptEdits} from '../lib/nodeEdit';
@@ -15,6 +15,7 @@ type InspectorProps={
  onSave:(id:string,edits:ConceptEdits)=>void;
  onAddConnection:(nodeId:string)=>void;
  onEditConnection:(edgeId:string)=>void;
+ onDelete:(nodeId:string)=>void;
 };
 
 function ConceptEditor({node,onSave,onCancel}:{node:Concept;onSave:InspectorProps['onSave'];onCancel:()=>void}){
@@ -25,12 +26,12 @@ function ConceptEditor({node,onSave,onCancel}:{node:Concept;onSave:InspectorProp
  });
  const [error,setError]=useState('');
  const labelInput=useRef<HTMLInputElement>(null);
- useEffect(()=>{labelInput.current?.focus();},[]);
+ useEffect(()=>{labelInput.current?.focus({preventScroll:true});},[]);
  return <form className="concept-editor" onKeyDown={event=>{
   if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onCancel();}
  }} onSubmit={event=>{
   event.preventDefault();
-  if(!draft.label.trim()){setError('Give this topic a name.');labelInput.current?.focus();return;}
+  if(!draft.label.trim()){setError('Give this topic a name.');labelInput.current?.focus({preventScroll:true});return;}
   const originalDetails=node.data.details??node.data.answers?.at(-1)?.answer??'';
   onSave(node.id,{...draft,details:node.data.details===undefined&&draft.details===originalDetails?undefined:draft.details});
  }}>
@@ -56,11 +57,11 @@ function ConceptEditor({node,onSave,onCancel}:{node:Concept;onSave:InspectorProp
  </form>;
 }
 
-function InspectorContent({node,nodes,edges,onSelect,onShowChat,onSave,sessionTitles,onAddConnection,onEditConnection}:{node:Concept}&Pick<InspectorProps,'nodes'|'edges'|'onSelect'|'onShowChat'|'onSave'|'sessionTitles'|'onAddConnection'|'onEditConnection'>){
+function InspectorContent({node,nodes,edges,onSelect,onShowChat,onSave,sessionTitles,onAddConnection,onEditConnection,onDelete}:{node:Concept}&Pick<InspectorProps,'nodes'|'edges'|'onSelect'|'onShowChat'|'onSave'|'sessionTitles'|'onAddConnection'|'onEditConnection'|'onDelete'>){
  const [editing,setEditing]=useState(false);
  const [saved,setSaved]=useState(false);
  const editButton=useRef<HTMLButtonElement>(null);
- const restoreFocus=()=>requestAnimationFrame(()=>editButton.current?.focus());
+ const restoreFocus=()=>requestAnimationFrame(()=>editButton.current?.focus({preventScroll:true}));
  const answers=node.data.answers??[];
  const latestAnswer=answers.at(-1);
  const fullAnswer=node.data.details??latestAnswer?.answer;
@@ -102,17 +103,18 @@ function InspectorContent({node,nodes,edges,onSelect,onShowChat,onSave,sessionTi
     </button><button className="connection-edit-link" onClick={()=>onEditConnection(edge.id)}><Pencil size={12}/>Edit connection</button></div>;
    }):<p>No connections yet.</p>}</div>
   </section>
+  <section className="topic-delete-section"><button type="button" className="delete-connection" onClick={()=>onDelete(node.id)}><Trash2 size={14}/>Delete topic</button><p>Also removes all {connections.length} connected {connections.length===1?'link':'links'}. Chat messages are kept.</p></section>
  </>;
 }
 
-export function NodeInspector({node,nodes,edges,onClose,onSelect,onShowChat,onSave,sessionTitles,onAddConnection,onEditConnection}:InspectorProps){
+export function NodeInspector({node,nodes,edges,onClose,onSelect,onShowChat,onSave,sessionTitles,onAddConnection,onEditConnection,onDelete}:InspectorProps){
  const drawer=useRef<HTMLElement>(null);
  const open=Boolean(node);
  useEffect(()=>{
   if(!open)return;
   const previous=document.activeElement as HTMLElement|null;
-  drawer.current?.focus();
-  return()=>{if(previous?.isConnected)previous.focus();};
+  drawer.current?.focus({preventScroll:true});
+  return()=>{if(previous?.isConnected)previous.focus({preventScroll:true});};
  },[open]);
  useEffect(()=>{
   if(!open)return;
@@ -123,7 +125,7 @@ export function NodeInspector({node,nodes,edges,onClose,onSelect,onShowChat,onSa
  return <aside ref={drawer} tabIndex={-1} role="dialog" aria-modal="false" aria-label="Topic details" aria-hidden={!open} className={`inspector ${open?'open':''}`}>
   {node&&<>
    <div className="inspector-top"><span className="eyebrow">TOPIC DETAILS</span><button className="icon-button" onClick={onClose} aria-label="Close topic details"><X size={18}/></button></div>
-   <InspectorContent onAddConnection={onAddConnection} onEditConnection={onEditConnection} sessionTitles={sessionTitles} key={node.id} node={node} nodes={nodes} edges={edges} onSelect={onSelect} onShowChat={onShowChat} onSave={onSave}/>
+   <InspectorContent onDelete={onDelete} onAddConnection={onAddConnection} onEditConnection={onEditConnection} sessionTitles={sessionTitles} key={node.id} node={node} nodes={nodes} edges={edges} onSelect={onSelect} onShowChat={onShowChat} onSave={onSave}/>
   </>}
  </aside>;
 }

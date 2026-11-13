@@ -8,7 +8,7 @@ export function SessionSwitcher({sessions,activeSessionId,pendingSessionId,onSel
  const input=useRef<HTMLInputElement>(null);
  const active=sessions.find(session=>session.id===activeSessionId)!;
  useEffect(()=>{setEditing(false);},[activeSessionId]);
- useEffect(()=>{if(editing){input.current?.focus();input.current?.select();}},[editing]);
+ useEffect(()=>{if(editing){input.current?.focus({preventScroll:true});input.current?.select();}},[editing]);
  return <div className="session-switcher">
   {editing?<form onSubmit={event=>{event.preventDefault();if(title.trim()){onRename(active.id,title);setEditing(false);}}}>
    <input ref={input} aria-label="Chat name" maxLength={80} value={title} onChange={event=>setTitle(event.target.value)} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();setEditing(false);}}}/>

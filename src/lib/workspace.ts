@@ -12,7 +12,7 @@ const unique=(values:string[])=>new Set(values).size===values.length;
 
 export function createWorkspace():WorkspaceSnapshot {
  const session=createChatSession();
- return {version:1,sessions:[session],activeSessionId:session.id,nodes:[],edges:[],mode:'demo',deletedConnections:[]};
+ return {version:1,sessions:[session],activeSessionId:session.id,nodes:[],edges:[],mode:'demo',deletedConnections:[],deletedNodeIds:[]};
 }
 
 function validMessage(value:unknown):value is ChatMessage {
@@ -53,6 +53,7 @@ export function parseWorkspace(raw:string):WorkspaceSnapshot|null {
    ||(saved.mode!=='demo'&&saved.mode!=='openai'))return null;
   const sessions=saved.sessions;
   if(saved.deletedConnections!==undefined&&(!Array.isArray(saved.deletedConnections)||!saved.deletedConnections.every(id)))return null;
+  if(saved.deletedNodeIds!==undefined&&(!Array.isArray(saved.deletedNodeIds)||!saved.deletedNodeIds.every(id)))return null;
   if(saved.pendingSessionId!==undefined&&saved.pendingSessionId!==null&&!id(saved.pendingSessionId))return null;
   if(!unique(sessions.map(session=>session.id))||!unique(sessions.flatMap(session=>session.messages.map(message=>message.id)))
    ||!unique(saved.nodes.map(node=>node.id))||!unique(saved.edges.map(edge=>edge.id)))return null;
@@ -78,7 +79,7 @@ export function parseWorkspace(raw:string):WorkspaceSnapshot|null {
     id:crypto.randomUUID(),role:'error' as const,content:'This reply was interrupted when the page closed. Retry to continue.',createdAt:Date.now(),
    }]};
   });
-  return {version:1,sessions:recoveredSessions,activeSessionId:sessions.some(session=>session.id===saved.activeSessionId)?String(saved.activeSessionId):sessions[0].id,nodes,edges,mode:saved.mode,deletedConnections:(saved.deletedConnections as string[]|undefined)??[]};
+  return {version:1,sessions:recoveredSessions,activeSessionId:sessions.some(session=>session.id===saved.activeSessionId)?String(saved.activeSessionId):sessions[0].id,nodes,edges,mode:saved.mode,deletedConnections:(saved.deletedConnections as string[]|undefined)??[],deletedNodeIds:(saved.deletedNodeIds as string[]|undefined)??[]};
  }catch{return null;}
 }
 

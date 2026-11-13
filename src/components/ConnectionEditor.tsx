@@ -14,7 +14,7 @@ function ConnectionForm({request,nodes,edge,onClose,onSave,onDelete,onShowChat}:
  });
  const [error,setError]=useState('');
  const input=useRef<HTMLInputElement>(null);
- useEffect(()=>{input.current?.focus();input.current?.select();},[]);
+ useEffect(()=>{input.current?.focus({preventScroll:true});input.current?.select();},[]);
  const source=nodes.find(node=>node.id===draft.source),target=nodes.find(node=>node.id===draft.target);
  const evidence=edge?.data?.evidence as GraphEvidence|undefined;
  return <form className="concept-editor connection-editor" onSubmit={event=>{
@@ -51,7 +51,7 @@ export function ConnectionEditor({request,nodes,edges,onClose,onSave,onDelete,on
  useLayoutEffect(()=>{
   if(!open)return;
   const previous=document.activeElement as HTMLElement|null;
-  return()=>{if(previous?.isConnected)previous.focus();};
+  return()=>{if(previous?.isConnected)previous.focus({preventScroll:true});};
  },[open]);
  useEffect(()=>{
   if(!open)return;

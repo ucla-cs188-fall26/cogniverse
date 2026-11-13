@@ -3,17 +3,18 @@ import {connectionKey,connectionKeys,styledConnection} from './connections';
 import type {Concept,LLMResult,TopicAnswer} from '../types';
 import {layout} from './layout';
 
-export function mergeGraph(existingNodes:Concept[],existingEdges:Edge[],result:LLMResult,messageId:string,userMessageId?:string,userPrompt='',sessionId?:string,deletedConnections:readonly string[]=[]){
+export function mergeGraph(existingNodes:Concept[],existingEdges:Edge[],result:LLMResult,messageId:string,userMessageId?:string,userPrompt='',sessionId?:string,deletedConnections:readonly string[]=[],deletedNodeIds:readonly string[]=[]){
  const answer:TopicAnswer={messageId,questionMessageId:userMessageId,question:userPrompt,answer:result.chatResponse,...(sessionId?{sessionId}:{})};
- const nodes=existingNodes.map(node=>{
+ const blockedNodes=new Set(deletedNodeIds);
+ const nodes=existingNodes.filter(node=>!blockedNodes.has(node.id)).map(node=>{
   const answers=node.data.answers??[];
   const attachAnswer=node.id===result.primaryTopicId&&!answers.some(item=>item.messageId===messageId);
   if(!node.data.isNew&&!attachAnswer)return node;
   return {...node,data:{...node.data,isNew:false,...(attachAnswer?{answers:[...answers,answer]}:{})}};
  });
  const ids=new Set(nodes.map(node=>node.id));
- const fresh=result.nodes.filter(node=>{if(ids.has(node.id))return false;ids.add(node.id);return true;});
- const positions=layout(existingNodes,fresh.length);
+ const fresh=result.nodes.filter(node=>{if(blockedNodes.has(node.id)||ids.has(node.id))return false;ids.add(node.id);return true;});
+ const positions=layout(nodes,fresh.length);
  fresh.forEach((node,index)=>nodes.push({
   id:node.id,type:'concept',position:positions[index],data:{
    label:node.label,summary:node.summary,quote:node.quote,...(node.focus?{focus:node.focus}:{}),
@@ -23,7 +24,7 @@ export function mergeGraph(existingNodes:Concept[],existingEdges:Edge[],result:L
   },
  }));
  const blocked=new Set(deletedConnections);
- const edges=existingEdges.filter(edge=>!blocked.has(connectionKey(edge.source,edge.target,String(edge.data?.relationship??''),edge.data?.kind==='shared_topic'))),edgeIds=new Set(edges.map(edge=>edge.id));
+ const edges=existingEdges.filter(edge=>ids.has(edge.source)&&ids.has(edge.target)&&!blocked.has(connectionKey(edge.source,edge.target,String(edge.data?.relationship??''),edge.data?.kind==='shared_topic'))),edgeIds=new Set(edges.map(edge=>edge.id));
  const reservedKeys=new Set(edges.flatMap(connectionKeys));
  result.edges.forEach(edge=>{
   const id=`${edge.source}__${edge.relationship}__${edge.target}`;

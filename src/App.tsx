@@ -1,11 +1,12 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {Background,Controls,MiniMap,ReactFlow,ReactFlowProvider,useEdgesState,useNodesState,useReactFlow,type Edge} from '@xyflow/react';
-import {Download,Network,RotateCcw,Waypoints,Info,Plus} from 'lucide-react';
+import {Download,Network,RotateCcw,Waypoints,Info,Plus,X} from 'lucide-react';
 import type {ChatMessage,Concept,WorkspaceSnapshot} from './types';
 import {askLLM,hasApiKey,missingKeyMessage} from './services/llm';
 import {askMockLLM} from './services/mockLLM';
 import {updateConcept,type ConceptEdits} from './lib/nodeEdit';
 import {mergeGraph} from './lib/graphMerge';
+import {deleteTopic,restoreTopic,type DeletedTopic} from './lib/nodeDelete';
 import {addConnection,renameConnection,deleteConnection,type ConnectionDraft} from './lib/connections';
 import {ConnectionEditor,type ConnectionEditorRequest} from './components/ConnectionEditor';
 import {conversationHistory,createChatSession,findMessageSession,renameSession,setSessionMessages,updateSession} from './lib/sessions';
@@ -25,14 +26,18 @@ function Workspace(){
  const [selectedId,setSelectedId]=useState<string|null>(null);
  const [connectionEditor,setConnectionEditor]=useState<ConnectionEditorRequest|null>(null);
  const [deletedConnections,setDeletedConnections]=useState(initial.workspace.deletedConnections??[]);
+ const [deletedNodeIds,setDeletedNodeIds]=useState(initial.workspace.deletedNodeIds??[]);
+ const [lastDeletedTopic,setLastDeletedTopic]=useState<DeletedTopic|null>(null);
  const [pendingSessionId,setPendingSessionId]=useState<string|null>(null);
  const [messageToShow,setMessageToShow]=useState<string|null>(null);
  const [saveStatus,setSaveStatus]=useState<'saving'|'saved'|'error'>('saved');
  const [storageError,setStorageError]=useState<string|undefined>(initial.error);
  const [nodes,setNodes,onNodesChange]=useNodesState<Concept>(initial.workspace.nodes);
  const [edges,setEdges,onEdgesChange]=useEdgesState<Edge>(initial.workspace.edges);
+ const nodeState=useRef(nodes);nodeState.current=nodes;
  const edgeState=useRef(edges);edgeState.current=edges;
  const deletedState=useRef(deletedConnections);deletedState.current=deletedConnections;
+ const deletedNodesState=useRef(deletedNodeIds);deletedNodesState.current=deletedNodeIds;
  const flow=useReactFlow<Concept>();
  const busy=useRef(false),request=useRef(0),controller=useRef<AbortController|null>(null);
  const graphPanel=useRef<HTMLElement>(null);
@@ -43,14 +48,14 @@ function Workspace(){
  const otherChatLoading=Boolean(pendingSessionId&&!loading);
  const pendingTitle=sessions.find(session=>session.id===pendingSessionId)?.title;
  const snapshot=useRef<WorkspaceSnapshot>(initial.workspace);
- snapshot.current={version:1,sessions,activeSessionId:active.id,nodes,edges,mode,pendingSessionId,deletedConnections};
+ snapshot.current={version:1,sessions,activeSessionId:active.id,nodes,edges,mode,pendingSessionId,deletedConnections,deletedNodeIds};
 
  const close=useCallback(()=>{
   setSelectedId(null);setConnectionEditor(null);setEdges(current=>current.map(edge=>edge.selected?{...edge,selected:false}:edge));setNodes(current=>current.map(node=>node.selected?{...node,selected:false}:node));
  },[setNodes,setEdges]);
- const select=useCallback((id:string)=>{
+ const select=useCallback((id:string,focusGraph=true)=>{
   setSelectedId(id);setConnectionEditor(null);setEdges(current=>current.map(edge=>edge.selected?{...edge,selected:false}:edge));setNodes(current=>current.map(node=>({...node,selected:node.id===id})));
-  void flow.fitView({nodes:[{id}],duration:400,padding:0.7,maxZoom:1.2});
+  if(focusGraph)void flow.fitView({nodes:[{id}],duration:400,padding:0.7,maxZoom:1.2});
  },[flow,setNodes,setEdges]);
  const fit=useCallback(()=>{
   requestAnimationFrame(()=>requestAnimationFrame(()=>{void flow.fitView({duration:400,padding:0.2,maxZoom:1});}));
@@ -75,7 +80,7 @@ function Workspace(){
    setStorageError(saved?undefined:'This browser could not save your workspace. Keep this tab open; recent changes may be lost on reload.');
   },350);
   return()=>clearTimeout(timer);
- },[sessions,activeSessionId,nodes,edges,mode,pendingSessionId,deletedConnections]);
+ },[sessions,activeSessionId,nodes,edges,mode,pendingSessionId,deletedConnections,deletedNodeIds]);
  useEffect(()=>{
   const flush=()=>{saveWorkspace(snapshot.current);};
   window.addEventListener('pagehide',flush);
@@ -110,13 +115,13 @@ function Workspace(){
   try{
    // Only this chat's messages become conversational context. All chats share graph IDs.
    const history=conversationHistory({...active,messages:next});
-   const result=await (isDemo?askMockLLM:askLLM)(history,flow.getNodes().map(node=>({
+   const result=await (isDemo?askMockLLM:askLLM)(history,nodeState.current.map(node=>({
     id:node.id,label:node.data.label,question:node.data.answers?.[0]?.question,focus:node.data.focus,
    })),abort.signal);
    if(token!==request.current)return;
    const id=uid(),userMessage=[...next].reverse().find(message=>message.role==='user');
-   const merged=mergeGraph(flow.getNodes(),edgeState.current,result,id,userMessage?.id,userMessage?.content,sessionId,deletedState.current);
-   setNodes(merged.nodes);edgeState.current=merged.edges;setEdges(merged.edges);
+   const merged=mergeGraph(nodeState.current,edgeState.current,result,id,userMessage?.id,userMessage?.content,sessionId,deletedState.current,deletedNodesState.current);
+   nodeState.current=merged.nodes;setNodes(merged.nodes);edgeState.current=merged.edges;setEdges(merged.edges);
    setSessions(current=>setSessionMessages(current,sessionId,[...next,{
     id,role:'assistant',source:mode,content:result.chatResponse,nodeIds:[...new Set(result.nodes.map(node=>node.id))],createdAt:Date.now(),
    }]));
@@ -138,7 +143,7 @@ function Workspace(){
  function closeConnection(){
   const returnNodeId=connectionEditor?.returnNodeId;
   setConnectionEditor(null);setEdges(current=>current.map(edge=>edge.selected?{...edge,selected:false}:edge));
-  if(returnNodeId&&flow.getNodes().some(node=>node.id===returnNodeId))select(returnNodeId);
+  if(returnNodeId&&flow.getNodes().some(node=>node.id===returnNodeId))select(returnNodeId,false);
  }
  function saveConnection(draft:ConnectionDraft,edgeId?:string):string|undefined {
   try{
@@ -158,12 +163,28 @@ function Workspace(){
  function newChat(){
   const session=createChatSession();setSessions(current=>[...current,session]);setActiveSessionId(session.id);setMessageToShow(null);
  }
- function saveConcept(id:string,edits:ConceptEdits){setNodes(current=>updateConcept(current,id,edits));}
+ function saveConcept(id:string,edits:ConceptEdits){const next=updateConcept(nodeState.current,id,edits);nodeState.current=next;setNodes(next);}
+ function removeTopic(id:string){
+  const node=nodeState.current.find(node=>node.id===id);if(!node)return;
+  const count=edgeState.current.filter(edge=>edge.source===id||edge.target===id).length;
+  if(!window.confirm(`Delete “${node.data.label}” and its ${count} ${count===1?'connection':'connections'}? Chat messages will be kept.`))return;
+  const next=deleteTopic(nodeState.current,edgeState.current,deletedNodesState.current,id);
+  nodeState.current=next.nodes;edgeState.current=next.edges;deletedNodesState.current=next.deletedNodeIds;
+  setNodes(next.nodes);setEdges(next.edges);setDeletedNodeIds(next.deletedNodeIds);setLastDeletedTopic(next.deleted??null);
+  setSelectedId(null);setConnectionEditor(null);
+ }
+ function undoTopicDeletion(){
+  if(!lastDeletedTopic)return;
+  const next=restoreTopic(nodeState.current,edgeState.current,deletedNodesState.current,deletedState.current,lastDeletedTopic);
+  nodeState.current=next.nodes;edgeState.current=next.edges;deletedNodesState.current=next.deletedNodeIds;
+  setNodes(next.nodes);setEdges(next.edges);setDeletedNodeIds(next.deletedNodeIds);setLastDeletedTopic(null);
+  requestAnimationFrame(()=>{if(nodeState.current.some(node=>node.id===lastDeletedTopic.node.id))select(lastDeletedTopic.node.id);});
+ }
  function reset(){
   if(!window.confirm('Reset the workspace? This clears ALL chats and the shared knowledge graph, including saved browser data.'))return;
   request.current++;controller.current?.abort();busy.current=false;setPendingSessionId(null);setSelectedId(null);setMessageToShow(null);
   const fresh=createWorkspace();fresh.mode=mode;
-  setSessions(fresh.sessions);setActiveSessionId(fresh.activeSessionId);setNodes([]);edgeState.current=[];setEdges([]);deletedState.current=[];setDeletedConnections([]);setConnectionEditor(null);
+  setSessions(fresh.sessions);setActiveSessionId(fresh.activeSessionId);nodeState.current=[];setNodes([]);deletedNodesState.current=[];setDeletedNodeIds([]);setLastDeletedTopic(null);edgeState.current=[];setEdges([]);deletedState.current=[];setDeletedConnections([]);setConnectionEditor(null);
   snapshot.current=fresh;saveWorkspace(fresh);
  }
  function exportGraph(){
@@ -183,11 +204,12 @@ function Workspace(){
     backgroundStatus={otherChatLoading?`A reply is being prepared in “${pendingTitle}”. You can switch chats while it finishes.`:undefined}
     onSend={text=>void send(text)} onRetry={()=>{const last=[...active.messages].reverse().find(message=>message.role==='user');if(last)void send(last.content,true);}} onSelect={select}/>
    <section ref={graphPanel} className="graph-panel"><div className="panel-heading"><div><Network size={18}/><h2>Shared knowledge graph</h2><span className="count">{nodes.length}</span></div><div className="graph-actions"><button className="add-connection" aria-label="Add connection" title="Add connection" disabled={nodes.length<2} onClick={()=>openConnection({})}><Plus size={14}/><span>Add connection</span></button><button className="icon-button" disabled={!nodes.length} onClick={exportGraph} aria-label="Export graph as JSON" title="Export graph"><Download size={16}/></button></div></div>
-    <div className="graph-canvas"><ReactFlow<Concept> nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} nodeTypes={nodeTypes} onNodeClick={(_,node)=>select(node.id)} onEdgeClick={(_,edge)=>openConnection({edgeId:edge.id})} onConnect={connection=>openConnection({sourceId:connection.source,targetId:connection.target})} isValidConnection={connection=>connection.source!==connection.target} onPaneClick={close} nodesConnectable deleteKeyCode={null} minZoom={0.1} maxZoom={2} fitView>
+    <div className="graph-canvas"><ReactFlow<Concept> nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} nodeTypes={nodeTypes} onNodeClick={(_,node)=>select(node.id,false)} onEdgeClick={(_,edge)=>openConnection({edgeId:edge.id})} onConnect={connection=>openConnection({sourceId:connection.source,targetId:connection.target})} isValidConnection={connection=>connection.source!==connection.target} onPaneClick={close} nodesConnectable deleteKeyCode={null} minZoom={0.1} maxZoom={2} fitView>
      <Background gap={22} size={1} color="#dce2e6"/><Controls showInteractive={false}/><MiniMap nodeColor="#78a28a" pannable zoomable maskColor="rgba(245,248,249,.7)"/>
     </ReactFlow>
     {!nodes.length&&<div className="graph-empty"><div className="graph-illustration"><span className="orbit o1"/><span className="orbit o2"/><span className="mini-node mn1"/><span className="mini-node mn2"/><span className="mini-node mn3"/><div><Network size={28}/></div></div><h2>Ideas don’t exist in isolation.</h2><p>Your chats contribute to one shared knowledge graph.</p><span>Discover concepts. Follow connections. See the bigger picture.</span></div>}
-    <NodeInspector onAddConnection={sourceId=>openConnection({sourceId})} onEditConnection={edgeId=>openConnection({edgeId})} onSave={saveConcept} node={selected} nodes={nodes} edges={edges} sessionTitles={Object.fromEntries(sessions.map(session=>[session.id,session.title]))} onClose={close} onSelect={select} onShowChat={showInChat}/>
+    <NodeInspector onDelete={removeTopic} onAddConnection={sourceId=>openConnection({sourceId})} onEditConnection={edgeId=>openConnection({edgeId})} onSave={saveConcept} node={selected} nodes={nodes} edges={edges} sessionTitles={Object.fromEntries(sessions.map(session=>[session.id,session.title]))} onClose={close} onSelect={select} onShowChat={showInChat}/>
+    {lastDeletedTopic&&<div className="node-deleted-toast" role="status"><span>Deleted “{lastDeletedTopic.node.data.label}” and {lastDeletedTopic.edges.length} {lastDeletedTopic.edges.length===1?'connection':'connections'}.</span><button onClick={undoTopicDeletion}>Undo</button><button className="icon-button" aria-label="Dismiss deleted topic notice" onClick={()=>setLastDeletedTopic(null)}><X size={13}/></button></div>}
     <ConnectionEditor request={connectionEditor} nodes={nodes} edges={edges} onClose={closeConnection} onSave={saveConnection} onDelete={removeConnection} onShowChat={showInChat}/>
     </div><footer className="graph-footer"><span><i/> {edges.length} connections · {sessions.length} {sessions.length===1?'chat':'chats'}</span><span>Drag to explore · Scroll to zoom</span></footer>
    </section>
